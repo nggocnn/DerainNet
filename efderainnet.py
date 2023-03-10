@@ -13,7 +13,7 @@ def weights_init(network, init_type='normal', init_gain=0.02):
 
     def init_function(m):
         classname = m.__class__.__name__
-        if hasattr(m, 'weigth') and classname.find('Conv') != -1:
+        if hasattr(m, 'weight') and classname.find('Conv') != -1:
             if init_type == 'normal':
                 nn.init.normal_(m.weight.data, mean=0.0, std=init_gain)
             elif init_type == 'xaiver':
@@ -36,64 +36,64 @@ def weights_init(network, init_type='normal', init_gain=0.02):
 # ----------------------------------------
 #      Kernel Prediction Network (KPN)
 # ----------------------------------------
-class BasicConv(nn.Module):
+class Basic(nn.Module):
     def __init__(self, in_channels, out_channels, att_rate=16, channel_att=False, spatial_att=False) -> None:
-        super(BasicConv, self).__init__()
+        super(Basic, self).__init__()
         self.channel_att = channel_att
         self.spatial_att = spatial_att
-        
-        self.conv_block = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
-            nn.ReLU()
-        )
+
+        self.conv1 = nn.Sequential(
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+                nn.ReLU()
+            )
 
         if self.channel_att:
-            self.channel_att_block = nn.Sequential(
-                nn.Conv2d(in_channels=2*out_channels, out_channels=out_channels//att_rate, kernel_size=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=out_channels//att_rate, out_channels=2*out_channels, kernel_size=1),
+            self.att_c = nn.Sequential(
+                nn.Conv2d(in_channels=2*out_channels, out_channels=out_channels//att_rate, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(),
+                nn.Conv2d(out_channels//att_rate, out_channels=out_channels, kernel_size=1, stride=1, padding=0),
                 nn.Sigmoid()
             )
 
-        if self.spatial_att:
-            self.spatial_att_block = nn.Sequential(
-                nn.Conv2d(in_channels=2,  out_channels=1, kernel_size=7, stride=1, padding=3),
+        if spatial_att:
+            self.att_s = nn.Sequential(
+                nn.Conv2d(in_channels=2, out_channels=1, kernel_size=7, stride=1, padding=3),
                 nn.Sigmoid()
             )
 
     def forward(self, data):
 
-        fw = self.conv_block(data)
+        fm = self.conv1(data)
 
         if self.channel_att:
-            fw_pool = torch.cat([
-                F.adaptive_avg_pool2d(fw, (1, 1)), 
-                F.adaptive_max_pool2d(fw, (1, 1)),
+            fm_pool = torch.cat([
+                F.adaptive_avg_pool2d(fm, (1, 1)),
+                F.adaptive_max_pool2d(fm, (1, 1))
             ], dim=1)
 
-            att = self.channel_att_block(fw_pool)
-            fw = fw * att
-        
+            att = self.att_c(fm_pool)
+            fm = fm * att
+
         if self.spatial_att:
-            fw_pool = torch.cat([
-                torch.mean(fw, dim=1, keepdim=True),
-                torch.max(fw, dim=1, keepdim=True)
+            fm_pool = torch.cat([
+                torch.mean(fm, dim=1, keepdim=True),
+                torch.max(fm, dim=1, keepdim=True)[0]
             ], dim=1)
 
-            att = self.spatial_att_block(fw_pool)
-            fw = fw * att
-        
-        return fw
+            att = self.att_s(fm_pool)
+            fm = fm * att
+
+        return fm
 
 
 class KernelConv(nn.Module):
     def __init__(self, kernel_size=[5], sep_conv=False, core_bias=False) -> None:
         super(KernelConv, self).__init__()
-        self.kernel_size = sorted(kernel_size) 
+        self.kernel_size = sorted(kernel_size)
         self.sep_conv = sep_conv
         self.core_bias = core_bias
 
@@ -194,17 +194,17 @@ class KPN(nn.Module):
         if self.core_bias:
             out_channels += (3 if color else 1) * burst_length
 
-        self.conv1 = BasicConv(in_channels, out_channels=64,  channel_att=False, spatial_att=False)
-        self.conv2 = BasicConv(in_channels=64, out_channels=128, channel_att=False, spatial_att=False)
-        self.conv3 = BasicConv(in_channels=128, out_channels=256, channel_att=False, spatial_att=False)
-        self.conv4 = BasicConv(in_channels=256, out_channels=512, channel_att=False, spatial_att=False)
-        self.conv5 = BasicConv(in_channels=512, out_channels=512, channel_att=False, spatial_att=False)
+        self.conv1 = Basic(in_channels, out_channels=64, channel_att=False, spatial_att=False)
+        self.conv2 = Basic(in_channels=64, out_channels=128, channel_att=False, spatial_att=False)
+        self.conv3 = Basic(in_channels=128, out_channels=256, channel_att=False, spatial_att=False)
+        self.conv4 = Basic(in_channels=256, out_channels=512, channel_att=False, spatial_att=False)
+        self.conv5 = Basic(in_channels=512, out_channels=512, channel_att=False, spatial_att=False)
 
-        self.conv6 = BasicConv(in_channels=512+512, out_channels=512, channel_att=channel_att, spatial_att=spatial_att)
-        self.conv7 = BasicConv(in_channels=256+512, out_channels=256, channel_att=channel_att, spatial_att=spatial_att)
-        self.conv8 = BasicConv(in_channels=256+128, out_channels=out_channels, channel_att=channel_att, spatial_att=spatial_att)
-
-        self.conv9 = nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=1, stride=1, padding=0)
+        self.conv6 = Basic(in_channels=512+512, out_channels=512, channel_att=channel_att, spatial_att=spatial_att)
+        self.conv7 = Basic(in_channels=256+512, out_channels=256, channel_att=channel_att, spatial_att=spatial_att)
+        self.conv8 = Basic(in_channels=256+128, out_channels=out_channels, channel_att=channel_att, spatial_att=spatial_att)
+        
+        self.outc = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
 
         self.kernel_pred = KernelConv(kernel_size=kernel_size, sep_conv=sep_conv, core_bias=self.core_bias)
         
@@ -221,7 +221,7 @@ class KPN(nn.Module):
         conv6 = self.conv6(torch.cat([conv4, F.interpolate(conv5, scale_factor=2, mode=self.up_mode)], dim=1))
         conv7 = self.conv7(torch.cat([conv3, F.interpolate(conv6, scale_factor=2, mode=self.up_mode)], dim=1))
         conv8 = self.conv8(torch.cat([conv2, F.interpolate(conv7, scale_factor=2, mode=self.up_mode)], dim=1))
-        core = self.conv9(F.interpolate(conv8, scale_factor=2, mode=self.up_mode))
+        core = self.outc(F.interpolate(conv8, scale_factor=2, mode=self.up_mode))
         
         pred1 = self.kernel_pred(data, core, white_level, rate=1)
         pred2 = self.kernel_pred(data, core, white_level, rate=2)
@@ -260,7 +260,7 @@ class LossAnneal(nn.Module):
         loss = 0
         for i in range(pred_i.size(1)):
             loss += self.loss_func(pred_i[:, i, ...], ground_truth)
-
+        
         loss /= pred_i.size(1)
         return self.beta * self.alpha ** global_step * loss
 
