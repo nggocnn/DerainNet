@@ -162,8 +162,8 @@ def text_save(content, filename, mode = 'a'):
 
 def get_files(path):
     ret = []
-    path_rainy = path + "/rain"
-    path_gt = path + "/norain"
+    path_rainy = path + "/rainy_image"
+    path_gt = path + "/ground_truth"
 
     for root, dirs, files in os.walk(path_rainy):
         files.sort()    
