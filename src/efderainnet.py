@@ -3,10 +3,11 @@ from torch import nn
 from torch.nn import functional as F
 import numpy as np
 
+
 def weights_init(network, init_type='normal', init_gain=0.02):
     """Initialize network weights.
     Parameters:
-        net (network)   -- network to be initialized
+        network (network)   -- network to be initialized
         init_type (str) -- the name of an initialization method: normal | xavier | kaiming | orthogonal
         init_gain (float)    -- scaling factor for normal, xavier and orthogonal
     """
@@ -16,20 +17,21 @@ def weights_init(network, init_type='normal', init_gain=0.02):
         if hasattr(m, 'weight') and classname.find('Conv') != -1:
             if init_type == 'normal':
                 nn.init.normal_(m.weight.data, mean=0.0, std=init_gain)
-            elif init_type == 'xaiver':
+            elif init_type == 'xavier':
                 nn.init.xavier_normal_(m.weight.data, gain=init_gain)
             elif init_type == 'kaiming':
                 torch.nn.init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
             elif init_type == 'orthogonal':
                 torch.nn.init.orthogonal_(m.weight.data, gain=init_gain)
             else:
-                raise NotImplementedError('Initialization method [%s] is not implemented' % init_type)
+                raise NotImplementedError(f'Initialization method {init_type} is not implemented')
+
         elif classname.find('BatchNorm2d') != -1:
             nn.init.normal_(m.weight.data)
             nn.init.constant_(m.bias.data, 0.0)
 
     # Apply the initialization function <init_function>
-    print('Initialize network with %s type' % init_type)
+    print(f'Initialize network with {init_type} type')
     network.apply(init_function)
 
 
@@ -43,25 +45,25 @@ class Basic(nn.Module):
         self.spatial_att = spatial_att
 
         self.conv1 = nn.Sequential(
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1),
                 nn.ReLU()
             )
 
         if self.channel_att:
             self.att_c = nn.Sequential(
-                nn.Conv2d(in_channels=2*out_channels, out_channels=out_channels//att_rate, kernel_size=1, stride=1, padding=0),
+                nn.Conv2d(in_channels=2*out_channels, out_channels=out_channels//att_rate, kernel_size=1),
                 nn.ReLU(),
-                nn.Conv2d(out_channels//att_rate, out_channels=out_channels, kernel_size=1, stride=1, padding=0),
+                nn.Conv2d(out_channels//att_rate, out_channels=out_channels, kernel_size=1),
                 nn.Sigmoid()
             )
 
         if spatial_att:
             self.att_s = nn.Sequential(
-                nn.Conv2d(in_channels=2, out_channels=1, kernel_size=7, stride=1, padding=3),
+                nn.Conv2d(in_channels=2, out_channels=1, kernel_size=7, padding=3),
                 nn.Sigmoid()
             )
 
@@ -111,7 +113,10 @@ class KernelConv(nn.Module):
         for K in self.kernel_size:
             t1 = core_1[:, :, current: current + K, ...].view(batch_size, N, K, 1, 3, height, width)
             t2 = core_2[:, :, current: current + K, ...].view(batch_size, N, 1, K, 3, height, width)
-            core_out[K] = torch.einsum('ijklno,ijlmno->ijkmno', [t1, t2]).view(batch_size, N, K * K, color, height, width)
+            core_out[K] = torch.einsum(
+                'ijklno,ijlmno->ijkmno', [t1, t2]
+            ).view(batch_size, N, K * K, color, height, width)
+
             current += K
 
         return core_out, None if not self.core_bias else core_3.squeeze()
@@ -175,7 +180,6 @@ class KernelConv(nn.Module):
         return pred_img_i
 
 
-
 class KPN(nn.Module):
     def __init__(
             self, 
@@ -188,8 +192,10 @@ class KPN(nn.Module):
         self.core_bias = core_bias
         self.up_mode = up_mode
 
-        in_channels = (3 if color else 1) * (burst_length if blind_est else burst_length + 1)
-        out_channels = (3 if color else 1) * (2 * sum(kernel_size) if sep_conv else np.sum(np.array(kernel_size) ** 2)) * burst_length
+        in_channels = (3 if color else 1) * \
+                      (burst_length if blind_est else burst_length + 1)
+        out_channels = (3 if color else 1) * \
+                       (2 * sum(kernel_size) if sep_conv else np.sum(np.array(kernel_size) ** 2)) * burst_length
 
         if self.core_bias:
             out_channels += (3 if color else 1) * burst_length
@@ -202,13 +208,16 @@ class KPN(nn.Module):
 
         self.conv6 = Basic(in_channels=512+512, out_channels=512, channel_att=channel_att, spatial_att=spatial_att)
         self.conv7 = Basic(in_channels=256+512, out_channels=256, channel_att=channel_att, spatial_att=spatial_att)
-        self.conv8 = Basic(in_channels=256+128, out_channels=out_channels, channel_att=channel_att, spatial_att=spatial_att)
+        self.conv8 = Basic(
+            in_channels=256+128, out_channels=out_channels,
+            channel_att=channel_att, spatial_att=spatial_att
+        )
         
         self.outc = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
 
         self.kernel_pred = KernelConv(kernel_size=kernel_size, sep_conv=sep_conv, core_bias=self.core_bias)
         
-        self.conv_final = nn.Conv2d(in_channels=12, out_channels=3, kernel_size=3, stride=1, padding=1)
+        self.conv_final = nn.Conv2d(in_channels=12, out_channels=3, kernel_size=3, padding=1)
 
     def forward(self, data_with_est, data, white_level=1.0):
         
@@ -234,69 +243,6 @@ class KPN(nn.Module):
         
         return pred
 
-
-class LossBasic(nn.Module):
-    def __init__(self, gradient_L1=True):
-        super(LossBasic, self).__init__()
-        self.l1_loss = nn.L1Loss()
-        self.l2_loss = nn.MSELoss()
-        self.gradient = TensorGradient(gradient_L1)
-
-    def forward(self, pred, ground_truth):
-        return \
-            self.l2_loss(pred, ground_truth) + \
-            self.l1_loss(self.gradient(pred), self.gradient(ground_truth))
-
-
-class LossAnneal(nn.Module):
-    def __init__(self, alpha=0.9998, beta=100):
-        super(LossAnneal, self).__init__()
-        self.global_step = 0
-        self.loss_func = LossBasic(gradient_L1=True)
-        self.alpha = alpha
-        self.beta = beta
-
-    def forward(self, global_step, pred_i, ground_truth):
-        loss = 0
-        for i in range(pred_i.size(1)):
-            loss += self.loss_func(pred_i[:, i, ...], ground_truth)
-        
-        loss /= pred_i.size(1)
-        return self.beta * self.alpha ** global_step * loss
-
-
-class LossFunc(nn.Module):
-    def __init__(self, coeff_basic=1.0, coeff_anneal=1.0, gradient_L1=True, alpha=0.9998, beta=100):
-        super(LossFunc, self).__init__()
-        self.coeff_basic = coeff_basic
-        self.coeff_anneal = coeff_anneal
-        self.loss_basic = LossBasic(gradient_L1)
-        self.loss_anneal = LossAnneal(alpha, beta)
-
-    def forward(self, pred_img_i, pred_img, ground_truth, global_step):
-        return \
-            self.coeff_basic * self.loss_basic(pred_img, ground_truth), \
-            self.coeff_anneal * self.loss_anneal(global_step, pred_img_i, ground_truth)
-
-
-class TensorGradient(nn.Module):
-    def __init__(self, L1=True):
-        super(TensorGradient, self).__init__()
-        self.L1 = L1
-
-    def forward(self, img):
-        w, h = img.size(-2), img.size(-1)
-        l = F.pad(img, [1, 0, 0, 0])
-        r = F.pad(img, [0, 1, 0, 0])
-        u = F.pad(img, [0, 0, 1, 0])
-        d = F.pad(img, [0, 0, 0, 1])
-
-        if self.L1:
-            return torch.abs((l - r)[..., 0: w, 0: h]) + torch.abs((u - d)[..., 0: w, 0: h])
-        else:
-            return torch.sqrt(
-                torch.pow((l - r)[..., 0: w, 0: h], 2) + torch.pow((u - d)[..., 0: w, 0: h], 2)
-            )
 
 if __name__ == '__main__':
     

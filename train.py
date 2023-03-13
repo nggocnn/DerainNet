@@ -1,67 +1,55 @@
-import os
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 import argparse
-import trainer
-
-
-def str2bool(v):
-    #print(v)
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
-        return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Unsupported value encountered.')
+from src import trainer
+from src.utilities.utils import str2bool
 
 
 if __name__ == "__main__":
+    # ----------------------------------------
+    #        Initialize the parameters
+    # ----------------------------------------
     parser = argparse.ArgumentParser()
-    # Pre-train, saving, and loading parameters
-    parser.add_argument('--save_path', type=str, default='./models', help='saving path that is a folder')
-    parser.add_argument('--sample_path', type=str, default='./samples', help='training samples path that is a folder')
-    parser.add_argument('--save_mode', type=str, default='epoch', help='saving mode, and by_epoch saving is recommended')
-    parser.add_argument('--save_by_epoch', type=int, default=10, help='interval between model checkpoints (by epochs)')
-    parser.add_argument('--save_by_iter', type=int, default=100000, help='interval between model checkpoints (by iterations)')
-    parser.add_argument('--load_name', type=str, default='', help='load the pre-trained model with certain epoch')
+
     # GPU parameters
-    parser.add_argument('--no_gpu', type=str2bool, default=False, help='True for CPU')
+    parser.add_argument('--gpu', type=str2bool, default=True, help='True for GPU')
     parser.add_argument('--multi_gpu', type=str2bool, default=False, help='True for more than 1 GPU')
-    #parser.add_argument('--multi_gpu', type=bool, default=False, help='True for more than 1 GPU')
-    parser.add_argument('--gpu_ids', type=str, default='0, 1, 2, 3', help='gpu_ids: e.g. 0  0,1  0,1,2  use -1 for CPU')
     parser.add_argument('--cudnn_benchmark', type=str2bool, default=True, help='True for unchanged input data type')
+
+    # Pre-train, saving, and loading parameters
+    parser.add_argument('--save_path', type=str, default='./models', help='Path to save KPN models')
+    parser.add_argument('--sample_path', type=str, default='./samples', help='Path to save derained samples')
+    parser.add_argument('--save_by_epoch', type=int, default=10, help='Interval between model checkpoints (by epochs)')
+    parser.add_argument('--load_name', type=str, default='', help='Load the pre-trained model with certain epoch')
+
     # Training parameters
-    parser.add_argument('--epochs', type=int, default=100, help='number of epochs of training')
-    parser.add_argument('--train_batch_size', type=int, default=16, help='size of the batches')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=16, help='Size of the batches')
     parser.add_argument('--lr_g', type=float, default=0.0002, help='Adam: learning rate for G / D')
     parser.add_argument('--b1', type=float, default=0.5, help='Adam: decay of first order momentum of gradient')
     parser.add_argument('--b2', type=float, default=0.999, help='Adam: decay of second order momentum of gradient')
-    parser.add_argument('--weight_decay', type=float, default=0, help='weight decay for optimizer')
-    parser.add_argument('--lr_decrease_epoch', type=int, default=20, help='lr decrease at certain epoch and its multiple')
-    parser.add_argument('--num_workers', type=int, default=8, help='number of cpu threads to use during batch generation')
+    parser.add_argument('--weight_decay', type=float, default=0, help='Weight decay for optimizer')
+    parser.add_argument('--lr_decrease_epoch', type=int, default=20,
+                        help='Learning reate decreases at a certain number of epochs')
+    parser.add_argument('--num_workers', type=int, default=8,
+                        help='Number of cpu threads to use during batch generation')
+
     # Initialization parameters
-    parser.add_argument('--color', type=str2bool, default=True, help='input type')
-    parser.add_argument('--burst_length', type=int, default=1, help='number of photos used in burst setting')
-    parser.add_argument('--blind_est', type=str2bool, default=True, help='variance map')
-    parser.add_argument('--kernel_size', type=str2bool, default=[3], help='kernel size')
-    parser.add_argument('--sep_conv', type=str2bool, default=False, help='simple output type')
-    parser.add_argument('--channel_att', type=str2bool, default=False, help='channel wise attention')
-    parser.add_argument('--spatial_att', type=str2bool, default=False, help='spatial wise attention')
-    parser.add_argument('--up_mode', type=str, default='bilinear', help='up mode')
-    parser.add_argument('--core_bias', type=str2bool, default=False, help='core_bias')
-    parser.add_argument('--init_type', type=str, default='xavier', help='initialization type of generator')
-    parser.add_argument('--init_gain', type=float, default=0.02, help='initialization gain of generator')
+    parser.add_argument('--color', type=str2bool, default=True, help='Input type (True for RGB')
+    parser.add_argument('--burst_length', type=int, default=1, help='Number of photos used in burst setting')
+    parser.add_argument('--blind_est', type=str2bool, default=True, help='Variance map')
+    parser.add_argument('--kernel_size', type=str2bool, default=[3], help='Kernel size')
+    parser.add_argument('--sep_conv', type=str2bool, default=False, help='Simple output type')
+    parser.add_argument('--channel_att', type=str2bool, default=False, help='Channel wise attention')
+    parser.add_argument('--spatial_att', type=str2bool, default=False, help='Spatial wise attention')
+    parser.add_argument('--up_mode', type=str, default='bilinear', help='Up mode')
+    parser.add_argument('--core_bias', type=str2bool, default=False, help='Core bias')
+    parser.add_argument('--init_type', type=str, default='xavier', help='Initialization type of generator')
+    parser.add_argument('--init_gain', type=float, default=0.02, help='Initialization gain of generator')
+
     # Dataset parameters
-    parser.add_argument('--baseroot', type=str, default='./rainy_image_dataset/training', help='images baseroot')
-    parser.add_argument('--rainaug', type=str2bool, default=False, help='true for using rainaug')
-    parser.add_argument('--crop', type=str2bool, default=False, help='whether to crop input images')
-    parser.add_argument('--crop_size', type=int, default=256, help='single patch size')
-    parser.add_argument('--geometry_aug', type=str2bool, default=False, help='geometry augmentation (scaling)')
-    parser.add_argument('--angle_aug', type=str2bool, default=False, help='geometry augmentation (rotation, flipping)')
-    parser.add_argument('--scale_min', type=float, default=1, help='min scaling factor')
-    parser.add_argument('--scale_max', type=float, default=1, help='max scaling factor')
-    parser.add_argument('--mu', type=int, default=0, help='Gaussian noise mean')
-    parser.add_argument('--sigma', type=int, default=30, help='Gaussian noise variance: 30 | 50 | 70')
+    parser.add_argument('--base_root', type=str, default='./data/train', help='Train images root path')
+    parser.add_argument('--input_size', type=int, default=224, help='Image resize')
+    parser.add_argument('--angle_aug', type=str2bool, default=False, help='Geometry augmentation (rotation, flipping)')
+
     configs = parser.parse_args()
     print(configs)
 

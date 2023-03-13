@@ -1,6 +1,5 @@
 import augmentations
 import numpy as np
-import random
 from PIL import Image
 
 # CIFAR-10 constants
@@ -33,7 +32,7 @@ def augment_and_mix(image, severity=3, width=3, depth=-1, alpha=1.):
 
     Args:
         image: Raw input image as float32 np.ndarray of shape (h, w, c)
-        severity: Severity of underlying augmentation operators (between 1 to 10).
+        severity: Severity of underlying augmentation operators (between 1 and 10).
         width: Width of augmentation chain
         depth: Depth of augmentation chain. -1 enables stochastic depth uniformly
             from [1, 3]
