@@ -57,7 +57,7 @@ class BasicConv(nn.Module):
             self.channel_att_block = nn.Sequential(
                 nn.Conv2d(in_channels=2*out_channels, out_channels=out_channels//att_rate, kernel_size=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(in_channels=out_channels//att_rate, out_channels=2*out_channels, kernel_size=1),
+                nn.Conv2d(in_channels=out_channels//att_rate, out_channels=out_channels, kernel_size=1),
                 nn.Sigmoid()
             )
 
@@ -83,7 +83,7 @@ class BasicConv(nn.Module):
         if self.spatial_att:
             fw_pool = torch.cat([
                 torch.mean(fw, dim=1, keepdim=True),
-                torch.max(fw, dim=1, keepdim=True)
+                torch.max(fw, dim=1, keepdim=True)[0]
             ], dim=1)
 
             att = self.spatial_att_block(fw_pool)
