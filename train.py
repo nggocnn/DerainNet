@@ -10,6 +10,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # GPU parameters
+    parser.add_argument('--load_name', type=str, default='',
+                        help='Load to pretrained KPN model to continuously train')
     parser.add_argument('--gpu', type=str2bool, default=True,
                         help='Set True to using GPU')
     parser.add_argument('--multi_gpu', type=str2bool, default=False,
