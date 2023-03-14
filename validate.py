@@ -29,6 +29,8 @@ if __name__ == "__main__":
     # Loading model, and parameters
     parser.add_argument('--results_path', type=str, default='./results_tmp',
                         help='Path to save the derain samples')
+    parser.add_argument('--save_sample', type=str2bool, default=True,
+                        help='Set True to save all samples')
     parser.add_argument('--separate_folder', type=str2bool, default=True,
                         help='Save sample images in separate folders or in same folder')
     parser.add_argument('--sample_encode', type=str, default='png',
@@ -73,6 +75,9 @@ if __name__ == "__main__":
     configs = parser.parse_args()
     print(configs)
 
+    gpu_num = torch.cuda.device_count()
+    print(f'Using {gpu_num} GPU(s)')
+
     # Initialize
     if configs.gpu:
         generator = utils.create_generator(configs).cuda()
@@ -102,23 +107,21 @@ if __name__ == "__main__":
         # To device
         if configs.gpu and torch.cuda.is_available():
             rain_input = rain_input.cuda()
-            norain_input = norain_input.cuda()
 
         # Forward propagation
         with torch.no_grad():
             derain_output = generator(rain_input, rain_input)
 
-        derain_output = rain_input
-
         for j in range(len(rain_input)):
             # Save
-            titles = ['rain', 'norain', 'derain']
-            images = [rain_input[j], norain_input[j], derain_output[j]]
-            utils.save_sample(
-                folder=configs.results_path, titles=titles, name=names[j],
-                images=images, height=origin_height[j], width=origin_width[j],
-                separate_folder=configs.separate_folder, encode=configs.sample_encode
-            )
+            if configs.save_sample:
+                titles = ['rain', 'norain', 'derain']
+                images = [rain_input[j], norain_input[j], derain_output[j]]
+                utils.save_sample(
+                    folder=configs.results_path, titles=titles, name=names[j],
+                    images=images, height=origin_height[j], width=origin_width[j],
+                    separate_folder=configs.separate_folder, encode=configs.sample_encode
+                )
 
             # Evaluation
             derain_image = utils.recover_image(derain_output[j], height=origin_height[j], width=origin_width[j])
