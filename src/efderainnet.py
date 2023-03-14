@@ -177,7 +177,6 @@ class KernelConv(nn.Module):
         return pred_img_i
 
 
-
 class KPN(nn.Module):
     def __init__(
             self, 
@@ -232,7 +231,7 @@ class KPN(nn.Module):
         pred3 = self.kernel_pred(data, core, white_level, rate=3)
         pred4 = self.kernel_pred(data, core, white_level, rate=4)
 
-        pred_cat = torch.cat([torch.cat([torch.cat([pred1, pred2], dim=1), pred3], dim=1), pred4], dim=1)
+        pred_cat = torch.cat([pred1, pred2, pred3, pred4], dim=1)
         
         pred = self.conv_final(pred_cat)
         

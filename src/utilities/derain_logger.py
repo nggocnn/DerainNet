@@ -1,6 +1,7 @@
 import logging
 from colorlog import ColoredFormatter
 
+
 class DeRainLogger:
     logger = None
 
