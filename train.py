@@ -18,6 +18,8 @@ if __name__ == "__main__":
                         help='True for unchanged input data type')
 
     # Saving model, and loading parameters
+    parser.add_argument('--load_name', type=str, default='',
+                        help='Load to pretrained KPN model to continuously train')
     parser.add_argument('--save_path', type=str, default='./models',
                         help='Path to save KPN model')
     parser.add_argument('--save_name', type=str, default='KPN',
