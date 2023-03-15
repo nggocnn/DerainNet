@@ -47,7 +47,7 @@ if __name__ == "__main__":
                         help='Number of photos used in burst setting')
     parser.add_argument('--blind_est', type=str2bool, default=True,
                         help='Variance map')
-    parser.add_argument('--kernel_size', type=str2bool, default=[3],
+    parser.add_argument('--kernel_size', type=int, default=3,
                         help='Kernel size')
     parser.add_argument('--sep_conv', type=str2bool, default=False,
                         help='Simple output type')
@@ -106,9 +106,7 @@ if __name__ == "__main__":
 
         # Forward propagation
         with torch.no_grad():
-            derain_output = generator(rain_input, rain_input)
-
-        derain_output = rain_input
+            derain_output = generator(rain_input)
 
         for j in range(len(rain_input)):
             # Save

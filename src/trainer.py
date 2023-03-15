@@ -19,12 +19,12 @@ def pretrain(configs):
 
 	# Loss functions
 	if configs.gpu and torch.cuda.is_available():
-		criterion_L1 = torch.nn.L1Loss().cuda()
-		# criterion_L2 = torch.nn.MSELoss().cuda()
+		criterion_L1 = torch.nn.L1Loss(reduction='sum').cuda()
+		criterion_L2 = torch.nn.MSELoss(reduction='sum').cuda()
 		criterion_ssim = ssim.SSIM().cuda()
 	else:
-		criterion_L1 = torch.nn.L1Loss()
-		# criterion_L2 = torch.nn.MSELoss()
+		criterion_L1 = torch.nn.L1Loss(reduction='sum')
+		criterion_L2 = torch.nn.MSELoss(reduction='sum')
 		criterion_ssim = ssim.SSIM()
 
 	# Initialize Generator
@@ -71,8 +71,8 @@ def pretrain(configs):
 
 	for epoch in range(configs.epochs):
 		l1_loss_sum, l1_loss_avg, ssim_loss_sum, ssim_loss_avg, loss_sum, loss_avg = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-		for i, (rain_input, norain_input, origin_height, origin_width, names) \
-			in enumerate(tqdm(train_loader, desc=f'Epoch: {epoch + 1}/{configs.epochs}')):
+		pbar = tqdm(train_loader, desc=f'Epoch: {epoch + 1}/{configs.epochs}')
+		for i, (rain_input, norain_input, origin_height, origin_width, names) in enumerate(pbar):
 
 			# To device
 			if configs.gpu and torch.cuda.is_available():
@@ -81,18 +81,32 @@ def pretrain(configs):
 
 			# Train Generator
 			optimizer.zero_grad()
-			derain_output = generator(rain_input, rain_input)
+			derain_output = generator(rain_input)
 
 			# Overall Loss and optimize
 			ssim_loss = criterion_ssim(norain_input, derain_output)
 			l1_loss = criterion_L1(norain_input, derain_output)
+			l2_loss = criterion_L2(norain_input, derain_output)
+
 			loss = l1_loss - 0.2 * ssim_loss
 			loss.backward()
 			optimizer.step()
 
-			l1_loss_sum += float(l1_loss.clone().data.cpu()) * len(rain_input)
-			ssim_loss_sum += float(ssim_loss.clone().data.cpu()) * len(rain_input)
-			loss_sum += float(loss.clone().data.cpu()) * len(rain_input)
+			l1_loss_copy = float(l1_loss.clone().data.cpu())
+			l1_loss_sum += l1_loss_copy
+
+			ssim_loss_copy = float(ssim_loss.clone().data.cpu())
+			ssim_loss_sum += ssim_loss_copy * len(rain_input)
+
+			loss_sum += l1_loss_copy - 0.2 * ssim_loss_copy
+
+			pbar.set_description(
+				desc=
+				f'Epoch: {epoch + 1}/{configs.epochs} | ' +
+				f'L1: {l1_loss_copy / len(rain_input):6.4f} | ' +
+				f'L2: {l2_loss.clone().data.cpu() / len(rain_input):6.4f} | ' +
+				f'SSIM: {ssim_loss_copy:1.4f} ...'
+				)
 
 		l1_loss_avg = l1_loss_sum / n_train_images
 		ssim_loss_avg = ssim_loss_sum / n_train_images
@@ -118,7 +132,7 @@ def pretrain(configs):
 		adjust_learning_rate(configs, (epoch + 1), optimizer)
 
 		# Save sample data
-		titles = ['rain', 'norain', 'derain']
+		titles = [f'rain_{epoch}', f'norain_{epoch}', f'derain_{epoch}']
 		images = [rain_input[0], norain_input[0], derain_output[0]]
 		utils.save_sample(
 			folder=configs.sample_path, titles=titles, name=names[0],

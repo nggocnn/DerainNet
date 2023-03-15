@@ -93,47 +93,41 @@ class BasicConv(nn.Module):
 
 
 class KernelConv(nn.Module):
-    def __init__(self, kernel_size=[5], sep_conv=False, core_bias=False) -> None:
+    def __init__(self, kernel_size=5, sep_conv=False, core_bias=False) -> None:
         super(KernelConv, self).__init__()
-        self.kernel_size = sorted(kernel_size)
+        self.kernel_size = kernel_size
         self.sep_conv = sep_conv
         self.core_bias = core_bias
 
     def _sep_conv_core(self, core, batch_size, N, color, height, width):
-        kernel_total = sum(self.kernel_size)
         core = core.view(batch_size, N, -1, color, height, width)
+
+        core_1, core_2, core_3 = None, None, None
 
         if not self.core_bias:
-            core_1, core_2 = torch.split(core, kernel_total, dim=2)
+            core_1, core_2 = torch.split(core, self.kernel_size, dim=2)
         else:
-            core_1, core_2, core_3 = torch.split(core, kernel_total, dim=2)
+            core_1, core_2, core_3 = torch.split(core, self.kernel_size, dim=2)
 
-        core_out = {}
-        current = 0
-        for K in self.kernel_size:
-            t1 = core_1[:, :, current: current + K, ...].view(batch_size, N, K, 1, 3, height, width)
-            t2 = core_2[:, :, current: current + K, ...].view(batch_size, N, 1, K, 3, height, width)
-            core_out[K] = torch.einsum('ijklno,ijlmno->ijkmno', [t1, t2]).view(batch_size, N, K * K, color, height, width)
-            current += K
+        t1 = core_1[:, :, 0: 0 + self.kernel_size, ...].view(batch_size, N, self.kernel_size, 1, height, width)
+        t2 = core_2[:, :, 0: 0 + self.kernel_size, ...].view(batch_size, N, 1, self.kernel_size, height, width)
+        core_ = torch.einsum('ijklno,ijlmno->ijkmno', [t1, t2]).view(batch_size, N, self.kernel_size**2, color, height, width)
 
-        return core_out, None if not self.core_bias else core_3.squeeze()
+        return core_, None if not self.core_bias else core_3.squeeze()
 
     def _convert_dict(self, core, batch_size, N, color, height, width):
-        core_out = {}
         core = core.view(batch_size, N, -1, color, height, width)
-        core_out[self.kernel_size[0]] = core[:, :, 0: self.kernel_size[0]**2, ...]
-        bias = None if not self.core_bias else core[:, :, -1, ...]
-        return core_out, bias
+        core_ = core[:, :, 0: self.kernel_size**2, ...]
+
+        return core_, None if not self.core_bias else core[:, :, -1, ...].squeeze()
 
     def forward(self, frames, core, white_level=1.0, rate=1):
         if len(frames.size()) == 5:
             batch_size, N, color, height, width = frames.size()
-        elif len(frames.size()) == 4:
+        else:
             batch_size, N, height, width = frames.size()
             color = 1
             frames = frames.view(batch_size, N, color, height, width)
-        else:
-            raise ValueError('Frames size is invalid: [%d]' % len(frames.size()))
 
         if self.sep_conv:
             core, bias = self._sep_conv_core(core, batch_size, N, color, height, width)
@@ -141,50 +135,34 @@ class KernelConv(nn.Module):
             core, bias = self._convert_dict(core, batch_size, N, color, height, width)
         
         image_stack = []
-        pred_image = []
-        kernel = self.kernel_size[::-1]
 
-        for index, K in enumerate(kernel):
-            if not image_stack:
-                padding_num = (K // 2) * rate
-                frame_pad = F.pad(frames, [padding_num, padding_num, padding_num, padding_num])
-                
-                for i in range(0, K):
-                    for j in range(0, K):
-                        image_stack.append(frame_pad[..., i*rate: i*rate+height, j*rate: j*rate+width])
-                
-                image_stack = torch.stack(image_stack, dim=2)
-            else:
-                k_diff = (kernel[index - 1] - kernel[index]) // 2
-                image_stack = image_stack[:, :, k_diff: -k_diff, ...]
+        padding_num = (self.kernel_size//2) * rate
+        frame_pad = F.pad(frames, [padding_num, padding_num, padding_num, padding_num])
 
-            pred_image.append(torch.sum(
-                core[K].mul(image_stack), dim=2, keepdim=False
-            ))
+        for i in range(0, self.kernel_size):
+            for j in range(0, self.kernel_size):
+                image_stack.append(frame_pad[..., i*rate: i*rate+height, j*rate: j*rate+width])
 
-        pred_image = torch.stack(pred_image, dim=0)
-        pred_img_i = torch.mean(pred_image, dim=0, keepdim=False)
-        pred_img_i = pred_img_i.squeeze(2)
+        image_stack = torch.stack(image_stack, dim=2)
+
+        pred_image = torch.sum(core.mul(image_stack), dim=2, keepdim=False)
+        pred_image = pred_image.squeeze()
         
         if self.core_bias:
-            if bias is None:
-                raise ValueError('The bias should not be None.')
-            
-            pred_img_i += bias
+            pred_image += bias
 
-        pred_img_i = pred_img_i / white_level
+        pred_image = pred_image / white_level
 
-        return pred_img_i
+        return pred_image
 
 
 class KPN(nn.Module):
     def __init__(
             self, 
-            color=True, burst_length=1, blind_est=True, kernel_size=[5], sep_conv=False,
+            color=True, burst_length=1, blind_est=True, kernel_size=5, sep_conv=False,
             channel_att=False, spatial_att=False, up_mode='bilinear', core_bias=False
     ) -> None:
         super(KPN, self).__init__()
-        self.color_channel = 3 if color else 1
         self.burst_length = burst_length
         self.core_bias = core_bias
         self.up_mode = up_mode
@@ -192,7 +170,7 @@ class KPN(nn.Module):
         in_channels = (3 if color else 1) * \
                       (burst_length if blind_est else burst_length + 1)
         out_channels = (3 if color else 1) * \
-                       (2 * sum(kernel_size) if sep_conv else np.sum(np.array(kernel_size) ** 2)) * burst_length
+                       ((2 * kernel_size) if sep_conv else (kernel_size**2 * burst_length))
 
         if self.core_bias:
             out_channels += (3 if color else 1) * burst_length
@@ -213,9 +191,9 @@ class KPN(nn.Module):
         
         self.conv_final = nn.Conv2d(in_channels=12, out_channels=3, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, data_with_est, data, white_level=1.0):
+    def forward(self, data, white_level=1.0):
         
-        conv1 = self.conv1(data_with_est)
+        conv1 = self.conv1(data)
         conv2 = self.conv2(F.avg_pool2d(conv1, kernel_size=2, stride=2))
         conv3 = self.conv3(F.avg_pool2d(conv2, kernel_size=2, stride=2))
         conv4 = self.conv4(F.avg_pool2d(conv3, kernel_size=2, stride=2))
@@ -225,7 +203,7 @@ class KPN(nn.Module):
         conv7 = self.conv7(torch.cat([conv3, F.interpolate(conv6, scale_factor=2, mode=self.up_mode)], dim=1))
         conv8 = self.conv8(torch.cat([conv2, F.interpolate(conv7, scale_factor=2, mode=self.up_mode)], dim=1))
         core = self.conv9(F.interpolate(conv8, scale_factor=2, mode=self.up_mode))
-        
+
         pred1 = self.kernel_pred(data, core, white_level, rate=1)
         pred2 = self.kernel_pred(data, core, white_level, rate=2)
         pred3 = self.kernel_pred(data, core, white_level, rate=3)
@@ -240,7 +218,7 @@ class KPN(nn.Module):
 
 if __name__ == '__main__':
     
-    kpn = KPN().cuda()
+    kpn = KPN(channel_att=True, spatial_att=True, core_bias=True).cuda()
     a = torch.randn(4, 3, 224, 224).cuda()
-    b = kpn(a, a)
+    b = kpn(a)
     print(b.shape)

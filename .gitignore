@@ -135,3 +135,6 @@ dmypy.json
 
 # models
 *.pth
+
+#loss log
+*.csv

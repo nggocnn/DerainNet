@@ -124,7 +124,7 @@ def text_save(content, filename, mode='a'):
     file.close()
 
 
-def get_files(norain_path, rain_path, image_encoder='jpg'):
+def get_files(rain_path, norain_path, image_encoder='jpg'):
 
     if not os.path.exists(rain_path):
         raise Exception(f'Data path {rain_path} is not valid!')

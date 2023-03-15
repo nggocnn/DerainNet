@@ -64,14 +64,3 @@ class SSIM(torch.nn.Module):
             self.channel = channel
 
         return _ssim(batch1, batch2, window, self.window_size, channel, self.size_average)
-
-
-def ssim(batch1, batch2, window_size=11, size_average=True):
-    (_, channel, _, _) = batch1.size()
-    window = create_window(window_size, channel)
-
-    if batch1.is_cuda:
-        window = window.cuda(batch1.get_device())
-    window = window.type_as(batch1)
-
-    return _ssim(batch1, batch2, window, window_size, channel, size_average)

@@ -12,7 +12,7 @@ class DeRainDataset(Dataset):
     def __init__(self, configs):
         self.configs = configs
         self.image_list, self.name_list = \
-            utils.get_files(configs.norain_path, configs.rain_path)
+            utils.get_files(rain_path=configs.rain_path, norain_path=configs.norain_path)
         self.input_size = configs.input_size
 
     def __getitem__(self, index):
@@ -23,13 +23,10 @@ class DeRainDataset(Dataset):
         origin_height = rainy_images.shape[0]
         origin_width = rainy_images.shape[1]
 
-        height = width = self.input_size
-
-        if self.input_size % 16 != 0:
-            height = width = ((self.input_size // 16) + 1) * 16
-
-        rainy_images = cv2.resize(rainy_images, (width, height))
-        norain_images = cv2.resize(norain_images, (width, height))
+        if self.input_size > 0:
+            height = width = (self.input_size // 16) * 16
+            rainy_images = cv2.resize(rainy_images, (width, height))
+            norain_images = cv2.resize(norain_images, (width, height))
 
         # Two data augmentation methods are recommended
         # Random rotate and Horizontal flip
